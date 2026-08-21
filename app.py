@@ -89,7 +89,7 @@ def render_dashboard(ticker_symbol, title):
         font=dict(size=10, family="Arial Black, Arial, sans-serif")
     )
     # x축 카테고리 고정(연도 건너뛰기 방지) 및 세로 회전(-90)
-    fig_yearly.update_xaxes(type='category', tickangle=-90)
+    fig_yearly.update_xaxes(type='category', tickangle=-90, categoryorder='array', categoryarray=yearly_ret['Year'])
     fig_yearly.update_traces(textfont_size=11, textfont_color="black", textangle=-90, textposition="outside", cliponaxis=False) 
     st.plotly_chart(fig_yearly, use_container_width=True, config=config)
     
