@@ -3,14 +3,21 @@ import yfinance as yf
 import pandas as pd
 import plotly.express as px
 from datetime import datetime
+import requests
 
 st.set_page_config(page_title="S&P 500 Dashboard", layout="wide")
 st.title("📈 S&P 500 Market Dashboard")
 
 @st.cache_data
 def load_data():
-    # ^GSPC는 S&P 500의 티커입니다.
-    sp500 = yf.Ticker("^GSPC")
+    # 차단을 피하기 위해 크롬 브라우저인 것처럼 위장 (User-Agent 설정)
+    session = requests.Session()
+    session.headers.update(
+        {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
+    )
+    
+    # ^GSPC는 S&P 500의 티커입니다. session을 포함하여 데이터 호출.
+    sp500 = yf.Ticker("^GSPC", session=session)
     df = sp500.history(period="max")
     df.index = df.index.tz_localize(None)
     return df
@@ -32,7 +39,7 @@ col3.metric("전고점 대비 하락률", f"{current_drawdown:.2f}%", delta_colo
 
 st.info("💡 과거 구간의 최대 낙폭이 아닌, **역사적 고점(ATH) 대비 현재 지수가 얼마나 떨어져 있는지**를 직관적으로 보여줍니다.")
 
-# 2. 최근 10년 연도별 수익률 (Pandas 버전에 따라 'Y' 또는 'YE' 사용)
+# 2. 최근 10년 연도별 수익률
 st.header("2. 연도별 수익률 (최근 10년)")
 try:
     yearly_df = df['Close'].resample('YE').last()
