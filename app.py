@@ -33,10 +33,14 @@ def load_data(ticker):
     df.index = df.index.tz_localize(None)
     return df
 
+# 지수 대시보드를 그리는 통합 함수
 def render_dashboard(ticker_symbol, title):
     df = load_data(ticker_symbol)
+    config = {'staticPlot': True}
     
+    # ---------------------------------------------
     # 1. 전고점 대비 하락률
+    # ---------------------------------------------
     st.markdown(f"## 1. {title} 고점 대비 하락률 (MDD)")
     all_time_high = df['High'].max()
     ath_date = df['High'].idxmax()
@@ -55,9 +59,9 @@ def render_dashboard(ticker_symbol, title):
             unsafe_allow_html=True
         )
     
-    config = {'staticPlot': True}
-    
+    # ---------------------------------------------
     # 2. 최근 30년 연도별 수익률
+    # ---------------------------------------------
     st.markdown("## 2. 연도별 수익률 (최근 30년)")
     try:
         yearly_df = df['Close'].resample('YE').last()
@@ -80,7 +84,9 @@ def render_dashboard(ticker_symbol, title):
     fig_yearly.update_traces(textfont_size=11, textfont_color="black", textangle=-90, textposition="outside", cliponaxis=False) 
     st.plotly_chart(fig_yearly, use_container_width=True, config=config)
     
+    # ---------------------------------------------
     # 3. 최근 1년 월간 수익률
+    # ---------------------------------------------
     st.markdown("## 3. 월간 수익률 (최근 1년)")
     try:
         monthly_df = df['Close'].resample('ME').last()
@@ -102,48 +108,69 @@ def render_dashboard(ticker_symbol, title):
     fig_monthly.update_xaxes(type='category', tickangle=-45, categoryorder='array', categoryarray=monthly_ret['Month'])
     fig_monthly.update_traces(textfont_size=13, textfont_color="black", textangle=0, textposition="outside", cliponaxis=False)
     st.plotly_chart(fig_monthly, use_container_width=True, config=config)
-    
-    # --- 4. 초기 투자금 백테스트 시뮬레이터 (신규 추가) ---
+
+    # ---------------------------------------------
+    # 4. 초기 투자금 시뮬레이터 (백테스트)
+    # ---------------------------------------------
     st.markdown("---")
-    st.markdown(f"## 💰 {title} 장기 투자 시뮬레이터")
+    st.markdown(f"## 4. 💰 {title} 장기 투자 시뮬레이터")
     
-    # 데이터가 존재하는 연도 목록 추출 (최근 30년 제한)
-    available_years = sorted(list(set(df.index.year)))[-30:]
+    # 최근 30년 리스트 생성 (올해 제외)
+    current_year = datetime.now().year
+    years_list = list(range(current_year - 30, current_year + 1))
     
+    # 입력 UI 
     col_input1, col_input2 = st.columns(2)
     with col_input1:
-        # 기본값은 10년 전으로 설정
-        default_year_index = len(available_years) - 11 if len(available_years) > 10 else 0
-        selected_year = st.selectbox("투자 시작 연도", available_years, index=default_year_index)
+        selected_year = st.selectbox("투자를 시작한 연도 (연초 매수)", years_list, index=len(years_list)-11) # 기본값: 10년 전
     with col_input2:
-        # 입력 금액 (단위: 원, 기본값 1천만원)
-        initial_amount = st.number_input("초기 투자금 (원)", min_value=0, value=10000000, step=1000000, format="%d")
-        
-    # 선택한 연도의 가장 첫 번째 거래일 가격을 매수가로 산정
-    start_data = df[df.index.year == selected_year]
-    if not start_data.empty:
-        start_price = start_data['Close'].iloc[0]
-        
-        # 수익률 및 최종 금액 계산
-        calc_return_rate = ((current_price - start_price) / start_price) * 100
-        final_amount = initial_amount * (1 + calc_return_rate / 100)
-        
-        # 결과 렌더링 (플러스면 초록, 마이너스면 빨강)
-        res_color = "#d32f2f" if calc_return_rate < 0 else "#2e7d32"
-        res_sign = "+" if calc_return_rate >= 0 else ""
-        
-        st.markdown(
-            f"""
-            <div style="background-color: #f8f9fa; padding: 20px; border-radius: 10px; margin-top: 10px; border-left: 5px solid {res_color};">
-                <div style="font-size: 14px; color: #555;">현재 평가 금액</div>
-                <div style="font-size: 26px; font-weight: bold; color: {res_color};">{final_amount:,.0f} 원</div>
-                <div style="font-size: 14px; color: #555; margin-top: 10px;">누적 수익률</div>
-                <div style="font-size: 20px; font-weight: bold; color: {res_color};">{res_sign}{calc_return_rate:,.2f}%</div>
-            </div>
-            """, unsafe_allow_html=True
-        )
+        initial_amount = st.number_input("초기 투자 금액 (원/달러 등)", value=10000000, step=1000000)
+
+    # 선택한 연도부터의 데이터만 필터링
+    df_sim = df[df.index.year >= selected_year].copy()
     
-    st.caption(f"최종 데이터 업데이트: {latest_date.strftime('%Y-%m-%d')}")
+    if not df_sim.empty:
+        # 매수가 (해당 연도의 가장 첫 거래일 종가)
+        buy_price = df_sim.iloc[0]['Close']
+        buy_date = df_sim.index[0]
+        
+        # 포트폴리오 가치 계산 (초기자금 * (현재가/매수가))
+        df_sim['Portfolio Value'] = initial_amount * (df_sim['Close'] / buy_price)
+        
+        final_value = df_sim['Portfolio Value'].iloc[-1]
+        cumulative_roi = ((final_value - initial_amount) / initial_amount) * 100
+        
+        # 결과 텍스트 출력
+        col_res1, col_res2 = st.columns(2)
+        col_res1.metric(f"초기 투자금 ({buy_date.strftime('%y-%m-%d')} 매수)", f"{initial_amount:,.0f}")
+        
+        # 수익률 색상 분기 (빨강/초록)
+        roi_color = "#d32f2f" if cumulative_roi < 0 else "#2e7d32"
+        roi_sign = "+" if cumulative_roi >= 0 else ""
+        
+        with col_res2:
+            st.markdown(
+                f'<div style="font-size: 12px; color: #31333F; margin-bottom: 4px;">현재 평가 금액</div>'
+                f'<div style="color: {roi_color}; font-size: 22px; font-weight: bold;">{final_value:,.0f} ({roi_sign}{cumulative_roi:,.1f}%)</div>', 
+                unsafe_allow_html=True
+            )
+            
+        # 자산 성장 그래프 시각화 (인터랙티브 기능 켬)
+        fig_sim = px.line(df_sim, x=df_sim.index, y='Portfolio Value')
+        fig_sim.update_layout(
+            showlegend=False, xaxis_title=None, yaxis_title="자산 평가액",
+            margin=dict(l=0, r=0, t=20, b=0),
+            hovermode="x unified" # 마우스를 올리면 정확한 금액을 볼 수 있음
+        )
+        # 선 색상은 타이틀에 따라 다르게 부여 (S&P500 파란색, 나스닥 주황색)
+        line_color = "#1f77b4" if "S&P" in title else "#ff7f0e"
+        fig_sim.update_traces(line=dict(color=line_color, width=2))
+        
+        # 시뮬레이터 차트는 드래그나 클릭을 통해 세부 시점을 볼 수 있도록 config 제외
+        st.plotly_chart(fig_sim, use_container_width=True)
+
+    st.caption(f"최종 업데이트: {latest_date.strftime('%Y-%m-%d')}")
+
 
 # --- 페이지 분할 (탭 기능) ---
 tab1, tab2 = st.tabs(["S&P 500", "NASDAQ 100"])
