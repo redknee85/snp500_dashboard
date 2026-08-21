@@ -40,7 +40,7 @@ def load_data(ticker):
     df.index = df.index.tz_localize(None)
     return df
 
-# S&P500과 나스닥을 똑같은 형식으로 그리기 위한 통합 함수
+# 지수 대시보드를 그리는 통합 함수
 def render_dashboard(ticker_symbol, title):
     df = load_data(ticker_symbol)
     
@@ -80,7 +80,6 @@ def render_dashboard(ticker_symbol, title):
     yearly_ret['Year'] = yearly_ret['Date'].dt.strftime("'%y")
     yearly_ret['Color'] = yearly_ret['Return'].apply(lambda x: 'Positive' if x >= 0 else 'Negative')
     
-    # 데이터가 30개라 복잡하므로 텍스트는 소수점 제외(.0f)
     fig_yearly = px.bar(yearly_ret, x='Year', y='Return', text_auto='.0f', 
                         color='Color', color_discrete_map={'Positive': '#2e7d32', 'Negative': '#d32f2f'})
     fig_yearly.update_layout(
@@ -88,7 +87,7 @@ def render_dashboard(ticker_symbol, title):
         margin=dict(l=0, r=0, t=30, b=0),
         font=dict(size=10, family="Arial Black, Arial, sans-serif")
     )
-    # x축 카테고리 고정(연도 건너뛰기 방지) 및 세로 회전(-90)
+    # [수정됨] x축 카테고리 고정, 세로 회전, 시간순 정렬 강제 적용
     fig_yearly.update_xaxes(type='category', tickangle=-90, categoryorder='array', categoryarray=yearly_ret['Year'])
     fig_yearly.update_traces(textfont_size=11, textfont_color="black", textangle=-90, textposition="outside", cliponaxis=False) 
     st.plotly_chart(fig_yearly, use_container_width=True, config=config)
@@ -112,20 +111,20 @@ def render_dashboard(ticker_symbol, title):
         margin=dict(l=0, r=0, t=30, b=0),
         font=dict(size=12, family="Arial Black, Arial, sans-serif")
     )
-    # 월간 X축도 건너뛰기 방지
-    fig_monthly.update_xaxes(type='category', tickangle=-45)
+    # [수정됨] 월간 X축도 시간순 정렬 강제 적용
+    fig_monthly.update_xaxes(type='category', tickangle=-45, categoryorder='array', categoryarray=monthly_ret['Month'])
     fig_monthly.update_traces(textfont_size=13, textfont_color="black", textangle=0, textposition="outside", cliponaxis=False)
     st.plotly_chart(fig_monthly, use_container_width=True, config=config)
     
     st.caption(f"최종 업데이트: {latest_date.strftime('%Y-%m-%d')}")
 
 # --- 페이지 분할 (탭 기능) ---
-tab1, tab2 = st.tabs(["S&P 500", "NASDAQ"])
+tab1, tab2 = st.tabs(["S&P 500", "NASDAQ 100"])
 
 with tab1:
-    # S&P 500 티커(^GSPC) 호출
+    # S&P 500 티커(^GSPC)
     render_dashboard("^GSPC", "S&P 500")
 
 with tab2:
-    # 나스닥 종합지수 티커(^IXIC) 호출
-    render_dashboard("^IXIC", "나스닥")
+    # 나스닥 100 티커(^NDX)로 변경
+    render_dashboard("^NDX", "나스닥 100")
