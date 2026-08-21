@@ -119,70 +119,64 @@ def render_dashboard(ticker_symbol, title):
     current_year = datetime.now().year
     years_list = list(range(current_year - 30, current_year + 1))
     
-    # 입력 UI 
+    # 입력 UI (key 파라미터 추가로 탭 충돌 에러 방지)
     col_input1, col_input2 = st.columns(2)
     with col_input1:
-        selected_year = st.selectbox("투자를 시작한 연도 (연초 매수)", years_list, index=len(years_list)-11) # 기본값: 10년 전
+        selected_year = st.selectbox("투자를 시작한 연도 (연초 매수)", years_list, index=len(years_list)-11, key=f"{title}_year") 
     with col_input2:
-        initial_amount = st.number_input("초기 투자 금액 (원/달러 등)", value=10000000, step=1000000)
+        initial_amount = st.number_input("초기 투자 금액 (원/달러 등)", value=10000000, step=1000000, key=f"{title}_amount")
 
     # 선택한 연도부터의 데이터만 필터링
     df_sim = df[df.index.year >= selected_year].copy()
     
- if not df_sim.empty:
-            # 매수가 (해당 연도의 가장 첫 거래일 종가)
-            buy_price = df_sim.iloc[0]['Close']
-            buy_date = df_sim.index[0]
+    if not df_sim.empty:
+        # 매수가 (해당 연도의 가장 첫 거래일 종가)
+        buy_price = df_sim.iloc[0]['Close']
+        buy_date = df_sim.index[0]
+        
+        # 포트폴리오 가치 계산
+        df_sim['Portfolio Value'] = initial_amount * (df_sim['Close'] / buy_price)
+        final_value = df_sim['Portfolio Value'].iloc[-1]
+        cumulative_roi = ((final_value - initial_amount) / initial_amount) * 100
+        
+        # --- CAGR (연평균 복리 수익률) 계산 ---
+        days_held = (df_sim.index[-1] - buy_date).days
+        years_held = days_held / 365.25
+        cagr = ((final_value / initial_amount) ** (1 / years_held) - 1) * 100 if years_held > 0 else 0
+        
+        # 결과 텍스트 출력 (3칸으로 분할)
+        col_res1, col_res2, col_res3 = st.columns(3)
+        col_res1.metric(f"초기금액 ({buy_date.strftime('%y년')})", f"{initial_amount:,.0f}")
+        
+        roi_color = "#d32f2f" if cumulative_roi < 0 else "#2e7d32"
+        roi_sign = "+" if cumulative_roi >= 0 else ""
+        
+        with col_res2:
+            st.markdown(
+                f'<div style="font-size: 12px; color: #31333F; margin-bottom: 4px;">현재 평가 금액</div>'
+                f'<div style="color: {roi_color}; font-size: 18px; font-weight: bold;">{final_value:,.0f} <br><span style="font-size: 13px;">({roi_sign}{cumulative_roi:,.1f}%)</span></div>', 
+                unsafe_allow_html=True
+            )
             
-            # 포트폴리오 가치 계산 (초기자금 * (현재가/매수가))
-            df_sim['Portfolio Value'] = initial_amount * (df_sim['Close'] / buy_price)
+        with col_res3:
+            st.markdown(
+                f'<div style="font-size: 12px; color: #31333F; margin-bottom: 4px;">연평균 복리(CAGR)</div>'
+                f'<div style="color: {roi_color}; font-size: 18px; font-weight: bold;"><br>{roi_sign}{cagr:,.1f}%</div>', 
+                unsafe_allow_html=True
+            )
             
-            final_value = df_sim['Portfolio Value'].iloc[-1]
-            cumulative_roi = ((final_value - initial_amount) / initial_amount) * 100
-            
-            # --- CAGR (연평균 복리 수익률) 계산 ---
-            days_held = (df_sim.index[-1] - buy_date).days
-            years_held = days_held / 365.25 # 윤년 포함 정확한 투자 기간(년) 계산
-            cagr = ((final_value / initial_amount) ** (1 / years_held) - 1) * 100 if years_held > 0 else 0
-            
-            # 결과 텍스트 출력 (공간 확보를 위해 3칸으로 분할)
-            col_res1, col_res2, col_res3 = st.columns(3)
-            col_res1.metric(f"초기금액 ({buy_date.strftime('%y년')})", f"{initial_amount:,.0f}")
-            
-            # 수익률 색상 분기 (빨강/초록)
-            roi_color = "#d32f2f" if cumulative_roi < 0 else "#2e7d32"
-            roi_sign = "+" if cumulative_roi >= 0 else ""
-            
-            with col_res2:
-                st.markdown(
-                    f'<div style="font-size: 12px; color: #31333F; margin-bottom: 4px;">현재 평가 금액</div>'
-                    f'<div style="color: {roi_color}; font-size: 18px; font-weight: bold;">{final_value:,.0f} <br><span style="font-size: 13px;">({roi_sign}{cumulative_roi:,.1f}%)</span></div>', 
-                    unsafe_allow_html=True
-                )
-                
-            with col_res3:
-                st.markdown(
-                    f'<div style="font-size: 12px; color: #31333F; margin-bottom: 4px;">연평균 복리(CAGR)</div>'
-                    f'<div style="color: {roi_color}; font-size: 18px; font-weight: bold;"><br>{roi_sign}{cagr:,.1f}%</div>', 
-                    unsafe_allow_html=True
-                )
-            
-        # 자산 성장 그래프 시각화 (인터랙티브 기능 켬)
+        # 자산 성장 그래프
         fig_sim = px.line(df_sim, x=df_sim.index, y='Portfolio Value')
         fig_sim.update_layout(
             showlegend=False, xaxis_title=None, yaxis_title="자산 평가액",
             margin=dict(l=0, r=0, t=20, b=0),
-            hovermode="x unified" # 마우스를 올리면 정확한 금액을 볼 수 있음
+            hovermode="x unified"
         )
-        # 선 색상은 타이틀에 따라 다르게 부여 (S&P500 파란색, 나스닥 주황색)
         line_color = "#1f77b4" if "S&P" in title else "#ff7f0e"
         fig_sim.update_traces(line=dict(color=line_color, width=2))
-        
-        # 시뮬레이터 차트는 드래그나 클릭을 통해 세부 시점을 볼 수 있도록 config 제외
         st.plotly_chart(fig_sim, use_container_width=True)
 
     st.caption(f"최종 업데이트: {latest_date.strftime('%Y-%m-%d')}")
-
 
 # --- 페이지 분할 (탭 기능) ---
 tab1, tab2 = st.tabs(["S&P 500", "NASDAQ 100"])
