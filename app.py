@@ -11,18 +11,11 @@ st.set_page_config(page_title="Market Dashboard", layout="centered")
 # 1. 폰트 크기 및 여백 조절 (CSS 주입)
 st.markdown('''
 <style>
-    /* 제목 크기 대폭 축소 */
     h1 { font-size: 24px !important; padding-bottom: 0px !important; }
     h2 { font-size: 18px !important; padding-top: 10px !important; margin-bottom: -10px !important; }
-    
-    /* 숫자(Metric) 크기 축소 */
     div[data-testid="stMetricValue"] { font-size: 20px !important; }
     div[data-testid="stMetricLabel"] { font-size: 12px !important; }
-    
-    /* 상하 여백 줄이기 */
     .block-container { padding-top: 1rem !important; padding-bottom: 1rem !important; }
-    
-    /* 탭(Tab) 글자 크기 키우기 */
     button[data-baseweb="tab"] { font-size: 16px !important; font-weight: bold !important; }
 </style>
 ''', unsafe_allow_html=True)
@@ -40,7 +33,6 @@ def load_data(ticker):
     df.index = df.index.tz_localize(None)
     return df
 
-# 지수 대시보드를 그리는 통합 함수
 def render_dashboard(ticker_symbol, title):
     df = load_data(ticker_symbol)
     
@@ -56,7 +48,6 @@ def render_dashboard(ticker_symbol, title):
     col1.metric("현재 지수", f"{current_price:,.2f}", f"{current_price - df['Close'].iloc[-2]:.2f}")
     col2.metric("최고가(ATH)", f"{all_time_high:,.2f}", f"{ath_date.strftime('%y-%m-%d')}")
     
-    # 하락률 강제 빨간색 적용 (HTML 주입)
     with col3:
         st.markdown(
             f'<div style="font-size: 12px; color: #31333F; margin-bottom: 4px;">하락률</div>'
@@ -64,7 +55,6 @@ def render_dashboard(ticker_symbol, title):
             unsafe_allow_html=True
         )
     
-    # --- 차트 설정 공통 옵션 (터치 고정 모드) ---
     config = {'staticPlot': True}
     
     # 2. 최근 30년 연도별 수익률
@@ -76,7 +66,6 @@ def render_dashboard(ticker_symbol, title):
         
     yearly_ret = (yearly_df.pct_change() * 100).dropna().tail(30).reset_index()
     yearly_ret.columns = ['Date', 'Return']
-    # 연도를 2자리로 축약 (예: 2024 -> '24)
     yearly_ret['Year'] = yearly_ret['Date'].dt.strftime("'%y")
     yearly_ret['Color'] = yearly_ret['Return'].apply(lambda x: 'Positive' if x >= 0 else 'Negative')
     
@@ -87,7 +76,6 @@ def render_dashboard(ticker_symbol, title):
         margin=dict(l=0, r=0, t=30, b=0),
         font=dict(size=10, family="Arial Black, Arial, sans-serif")
     )
-    # [수정됨] x축 카테고리 고정, 세로 회전, 시간순 정렬 강제 적용
     fig_yearly.update_xaxes(type='category', tickangle=-90, categoryorder='array', categoryarray=yearly_ret['Year'])
     fig_yearly.update_traces(textfont_size=11, textfont_color="black", textangle=-90, textposition="outside", cliponaxis=False) 
     st.plotly_chart(fig_yearly, use_container_width=True, config=config)
@@ -111,20 +99,57 @@ def render_dashboard(ticker_symbol, title):
         margin=dict(l=0, r=0, t=30, b=0),
         font=dict(size=12, family="Arial Black, Arial, sans-serif")
     )
-    # [수정됨] 월간 X축도 시간순 정렬 강제 적용
     fig_monthly.update_xaxes(type='category', tickangle=-45, categoryorder='array', categoryarray=monthly_ret['Month'])
     fig_monthly.update_traces(textfont_size=13, textfont_color="black", textangle=0, textposition="outside", cliponaxis=False)
     st.plotly_chart(fig_monthly, use_container_width=True, config=config)
     
-    st.caption(f"최종 업데이트: {latest_date.strftime('%Y-%m-%d')}")
+    # --- 4. 초기 투자금 백테스트 시뮬레이터 (신규 추가) ---
+    st.markdown("---")
+    st.markdown(f"## 💰 {title} 장기 투자 시뮬레이터")
+    
+    # 데이터가 존재하는 연도 목록 추출 (최근 30년 제한)
+    available_years = sorted(list(set(df.index.year)))[-30:]
+    
+    col_input1, col_input2 = st.columns(2)
+    with col_input1:
+        # 기본값은 10년 전으로 설정
+        default_year_index = len(available_years) - 11 if len(available_years) > 10 else 0
+        selected_year = st.selectbox("투자 시작 연도", available_years, index=default_year_index)
+    with col_input2:
+        # 입력 금액 (단위: 원, 기본값 1천만원)
+        initial_amount = st.number_input("초기 투자금 (원)", min_value=0, value=10000000, step=1000000, format="%d")
+        
+    # 선택한 연도의 가장 첫 번째 거래일 가격을 매수가로 산정
+    start_data = df[df.index.year == selected_year]
+    if not start_data.empty:
+        start_price = start_data['Close'].iloc[0]
+        
+        # 수익률 및 최종 금액 계산
+        calc_return_rate = ((current_price - start_price) / start_price) * 100
+        final_amount = initial_amount * (1 + calc_return_rate / 100)
+        
+        # 결과 렌더링 (플러스면 초록, 마이너스면 빨강)
+        res_color = "#d32f2f" if calc_return_rate < 0 else "#2e7d32"
+        res_sign = "+" if calc_return_rate >= 0 else ""
+        
+        st.markdown(
+            f"""
+            <div style="background-color: #f8f9fa; padding: 20px; border-radius: 10px; margin-top: 10px; border-left: 5px solid {res_color};">
+                <div style="font-size: 14px; color: #555;">현재 평가 금액</div>
+                <div style="font-size: 26px; font-weight: bold; color: {res_color};">{final_amount:,.0f} 원</div>
+                <div style="font-size: 14px; color: #555; margin-top: 10px;">누적 수익률</div>
+                <div style="font-size: 20px; font-weight: bold; color: {res_color};">{res_sign}{calc_return_rate:,.2f}%</div>
+            </div>
+            """, unsafe_allow_html=True
+        )
+    
+    st.caption(f"최종 데이터 업데이트: {latest_date.strftime('%Y-%m-%d')}")
 
 # --- 페이지 분할 (탭 기능) ---
 tab1, tab2 = st.tabs(["S&P 500", "NASDAQ 100"])
 
 with tab1:
-    # S&P 500 티커(^GSPC)
     render_dashboard("^GSPC", "S&P 500")
 
 with tab2:
-    # 나스닥 100 티커(^NDX)로 변경
     render_dashboard("^NDX", "나스닥 100")
